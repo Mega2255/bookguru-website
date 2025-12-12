@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  username  String   @unique
+  email     String   @unique
+  password  String
+  isAdmin   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Relations
+  groupMembers     GroupMember[]
+  groupMessages    GroupMessage[]
+  sentMessages     DirectMessage[] @relation("sentMessages")
+  receivedMessages DirectMessage[] @relation("receivedMessages")
+  subscriptions    Subscription[]
+  cbtresults       CBTResult[]
+
+   passwordResets PasswordReset[]
+}
+
+model Group {
+  id        Int      @id @default(autoincrement())
+  title     String
+  createdAt DateTime @default(now())
+
+  members  GroupMember[]
+  messages GroupMessage[]
+}
+
+model GroupMember {
+  id      Int @id @default(autoincrement())
+  userId  Int
+  groupId Int
+
+  user  User  @relation(fields: [userId], references: [id])
+  group Group @relation(fields: [groupId], references: [id])
+}
+
+model GroupMessage {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  groupId   Int
+  content   String?
+  fileUrl   String?
+  fileType  String?
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  group Group @relation(fields: [groupId], references: [id])
+}
+
+model DirectMessage {
+  id         Int      @id @default(autoincrement())
+  senderId   Int
+  receiverId Int
+  content    String?
+  fileUrl    String?
+  fileType   String?
+  createdAt  DateTime @default(now())
+
+  sender   User @relation("sentMessages", fields: [senderId], references: [id])
+  receiver User @relation("receivedMessages", fields: [receiverId], references: [id])
+}
+
+model News {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  imageUrl  String?
+  createdAt DateTime @default(now())
+}
+
+model Subscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  amount    Float
+  plan      String // monthly, weekly, etc.
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Subject {
+  id           Int         @id @default(autoincrement())
+  name         String
+  slug         String      @unique
+  description  String?
+  maxQuestions Int         @default(100)
+  defaultTime  Int         @default(30)
+  allowCustom  Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  questions    Question[]
+  results      CBTResult[]
+}
+
+model Question {
+  id          Int      @id @default(autoincrement())
+  subjectId   Int
+  text        String
+  optionA     String
+  optionB     String
+  optionC     String
+  optionD     String
+  correct     String
+  explanation String?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+}
+
+model CBTResult {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  subjectId     Int
+  score         Int
+  total         Int
+  percentage    Float
+  durationMins  Int
+  numQuestions  Int
+  answers       Json
+  questionOrder Json
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id])
+  subject       Subject  @relation(fields: [subjectId], references: [id])
+}
+
+
+model PasswordReset {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}

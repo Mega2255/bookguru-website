@@ -1,0 +1,11 @@
+# Dependency folders
+bookguru/node_modules/
+bookguru-backend/node_modules/
+
+# Production Build folder (React's output)
+bookguru/build/
+
+# Environment variables (CRUCIAL for security)
+bookguru/.env
+bookguru-backend/.env
+.env
