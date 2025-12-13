@@ -31,11 +31,13 @@ const server = http.createServer(app);
 // --- FIX: CORS MUST COME FIRST ---
 app.use(
   cors({
-    origin: "http://localhost:5173",   // your frontend
+    origin: process.env.FRONTEND_URL,
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
   })
 );
+
 app.use(express.json());
 
 // --- NOW subscription routes (after CORS) ---
@@ -46,10 +48,12 @@ app.use("/api/auth", authRoutes);
 
 const io = new IOServer(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: process.env.FRONTEND_URL,
     methods: ["GET", "POST"],
+    credentials: true
   },
 });
+
 
 const prisma = new PrismaClient();
 
@@ -1076,4 +1080,6 @@ app.post("/api/newsletter/subscribe", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 BookGuru backend (with IO) running on http://localhost:${PORT}`));
+server.listen(PORT, () =>
+  console.log(`🚀 BookGuru backend running on port ${PORT}`)
+);
