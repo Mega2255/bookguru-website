@@ -2,7 +2,8 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
-const API = "http://localhost:5000";
+const API = import.meta.env.VITE_BACKEND_URL;
+
 
 export default function NewsPage() {
   const token = localStorage.getItem("token");

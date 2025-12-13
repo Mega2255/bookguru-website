@@ -4,7 +4,7 @@ import axios from "axios";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, Users, Download, RefreshCw, DollarSign, ChevronLeft, ChevronRight } from "lucide-react";
 
-const API = "http://localhost:5000";
+const API = import.meta.env.VITE_BACKEND_URL;
 
 export default function SubscriptionsPage() {
   const token = localStorage.getItem("token");

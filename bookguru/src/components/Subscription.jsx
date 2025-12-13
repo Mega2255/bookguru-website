@@ -7,13 +7,15 @@ export default function Subscription() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL; // ✅ use env variable
+
   async function submit(e) {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/api/newsletter/subscribe", {
+      const res = await fetch(`${BACKEND_URL}/api/newsletter/subscribe`, { // ✅ replaced URL
         method: "POST",
         headers: {
           "Content-Type": "application/json",

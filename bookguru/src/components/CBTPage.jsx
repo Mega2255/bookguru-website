@@ -4,7 +4,8 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
-const API = "http://localhost:5000";
+const API = import.meta.env.VITE_BACKEND_URL;
+
 
 export default function CBTPage() {
   const token = localStorage.getItem("token");

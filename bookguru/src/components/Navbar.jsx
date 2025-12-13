@@ -14,6 +14,8 @@ export default function Navbar() {
   // ⬇️ Use global auth state instead of localStorage
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL; // top of file, after imports
+
 
   // ======================================================
   // 📡 Fetch Subscription Status whenever user changes
@@ -27,9 +29,10 @@ export default function Navbar() {
     if (!token) return;
 
     try {
-      const res = await axios.get("http://localhost:5000/api/subscription/status", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`${BACKEND_URL}/api/subscription/status`, {
+  headers: { Authorization: `Bearer ${token}` }
+});
+
 
       setSubscription(res.data);
     } catch (err) {

@@ -8,13 +8,21 @@ export default function ResetPassword() {
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
 
-  const submit = async () => {
-    const res = await axios.post(`http://localhost:5000/api/auth/reset-password/${token}`, {
-      password,
-    });
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL; // ✅ use env variable
 
-    setMsg(res.data.message);
-    setTimeout(() => navigate("/login"), 2000);
+  const submit = async () => {
+    try {
+      const res = await axios.post(
+        `${BACKEND_URL}/api/auth/reset-password/${token}`,
+        { password }
+      );
+
+      setMsg(res.data.message);
+      setTimeout(() => navigate("/login"), 2000);
+    } catch (err) {
+      console.error(err);
+      setMsg("Failed to reset password. Try again.");
+    }
   };
 
   return (

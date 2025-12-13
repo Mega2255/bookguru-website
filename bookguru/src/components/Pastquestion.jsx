@@ -107,10 +107,13 @@ export default function Pastquestion() {
                 const token = localStorage.getItem("token");
                 if (!token) return navigate("/login");
 
-                const res = await axios.get(
-                    "http://localhost:5000/api/subscription/status",
-                    { headers: { Authorization: `Bearer ${token}` } }
-                );
+                const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+const res = await axios.get(
+    `${BACKEND_URL}/api/subscription/status`,
+    { headers: { Authorization: `Bearer ${token}` } }
+);
+
 
                 if (res.data.active) {
                     setAllowed(true);

@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import axios from "axios";
 
+const API = import.meta.env.VITE_BACKEND_URL;
+
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState("");
 
   const sendLink = async () => {
-    const res = await axios.post("http://localhost:5000/api/auth/forgot-password", { email });
+    const res = await axios.post(`${API}/api/auth/forgot-password`, { email });
     setMsg(res.data.message);
   };
 

@@ -1,17 +1,21 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
-const API = "http://localhost:5000";
+const API = import.meta.env.VITE_BACKEND_URL; // use env variable
 
 export default function UserHistory() {
   const token = localStorage.getItem("token");
   const [history, setHistory] = useState([]);
 
   useEffect(() => {
-    axios.get(`${API}/api/cbt/history`, { headers: { Authorization: `Bearer ${token}` }})
-      .then(res => setHistory(res.data))
-      .catch(err => console.error(err));
-  }, []);
+    if (!token) return;
+
+    axios.get(`${API}/api/cbt/history`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => setHistory(res.data))
+    .catch(err => console.error(err));
+  }, [token]);
 
   return (
     <div className="p-6 bg-white rounded shadow">

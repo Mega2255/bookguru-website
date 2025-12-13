@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import axios from "axios";
 
-const API = "http://localhost:5000";
-
 export default function Subscribe() {
   const token = localStorage.getItem("token");
   const [loading, setLoading] = useState(false);
+
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL; // ✅ use env variable
 
   const startPayment = async (plan) => {
     if (!token) return alert("You must be logged in");
@@ -14,8 +14,8 @@ export default function Subscribe() {
       setLoading(true);
 
       const res = await axios.post(
-        `${API}/api/subscription/create`,
-        { plan }, // ✅ ONLY send plan
+        `${BACKEND_URL}/api/subscription/create`, // ✅ replaced URL
+        { plan },
         {
           headers: {
             Authorization: `Bearer ${token}`,

@@ -7,13 +7,14 @@ export default function SubscriptionSuccess() {
   const reference = searchParams.get("reference");
   const navigate = useNavigate();
   const [status, setStatus] = useState("Verifying Payment...");
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL; // use env variable
 
   useEffect(() => {
     async function verifyPayment() {
       try {
-        // ❌ DO NOT SEND TOKEN — verification does not require auth
+        // ✅ Use environment variable instead of localhost
         const res = await axios.get(
-          `http://localhost:5000/api/subscription/verify/${reference}`
+          `${BACKEND_URL}/api/subscription/verify/${reference}`
         );
 
         setStatus("Subscription Activated Successfully!");
