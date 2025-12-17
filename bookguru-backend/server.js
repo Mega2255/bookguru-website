@@ -1,10 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
-
 import http from "http";
 import { Server as IOServer } from "socket.io";
 import multer from "multer";
@@ -12,23 +9,18 @@ import path from "path";
 import cron from "node-cron";
 import csv from "csv-parser";
 import fs from "fs";
-
+import jwt from "jsonwebtoken";
 
 import { requireSubscription } from "./src/middleware/requireSubscription.js";
-
 import subscriptionRoutes from "./src/routes/subscriptionRoutes.js";
-
 import authRoutes from './src/routes/authRoutes.js';
-
-
-
 
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
 
-// --- FIX: CORS MUST COME FIRST ---
+// --- CORS CONFIGURATION ---
 app.use(
   cors({
     origin: process.env.FRONTEND_URL,
@@ -40,11 +32,9 @@ app.use(
 
 app.use(express.json());
 
-// --- NOW subscription routes (after CORS) ---
+// --- ROUTES ---
 app.use("/api/subscription", subscriptionRoutes);
-
 app.use("/api/auth", authRoutes);
-
 
 const io = new IOServer(server, {
   cors: {
@@ -53,7 +43,6 @@ const io = new IOServer(server, {
     credentials: true
   },
 });
-
 
 const prisma = new PrismaClient();
 
@@ -68,18 +57,25 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-
 // ---------- auth middleware ----------
 function auth(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ message: "No token" });
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "supersecretkey");
-    req.user = decoded; // { id, email }
+    req.user = decoded; // { id, email, username, isAdmin }
     next();
   } catch (err) {
     return res.status(401).json({ message: "Invalid token" });
   }
+}
+
+// ---------- adminOnly middleware (FIXED: synchronous, checks token) ----------
+function adminOnly(req, res, next) {
+  if (!req.user?.isAdmin) {
+    return res.status(403).json({ message: "Not authorized - Admin access required" });
+  }
+  next();
 }
 
 // ---------- helper: emit online counts ----------
@@ -90,44 +86,8 @@ async function emitGroupCounts(groupId) {
   io.to(room).emit("onlineCount", { groupId, count });
 }
 
-// ==================== AUTH ENDPOINTS ====================
+// ==================== HEALTH CHECK ====================
 app.get("/", (req, res) => res.send("📚 BookGuru Backend (Prisma + IO) Running ✅"));
-
-app.post("/api/auth/register", async (req, res) => {
-  try {
-    const { name, username, email, password } = req.body;
-    if (!name || !username || !email || !password) return res.status(400).json({ message: "All fields required" });
-
-    const existing = await prisma.user.findFirst({ where: { OR: [{ email }, { username }] }});
-    if (existing) return res.status(400).json({ message: "Email or username already registered" });
-
-    const hashed = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({ data: { name, username, email, password: hashed }});
-    res.status(201).json({ user: { id: user.id, name: user.name, username: user.username, email: user.email }});
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Internal server error" });
-  }
-});
-
-app.post("/api/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: "All fields required" });
-
-    const user = await prisma.user.findUnique({ where: { email }});
-    if (!user) return res.status(400).json({ message: "Invalid email or password" });
-
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(400).json({ message: "Invalid email or password" });
-
-    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET || "supersecretkey", { expiresIn: "7d" });
-    res.json({ token, user: { id: user.id, username: user.username, name: user.name, email: user.email }});
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Internal server error" });
-  }
-});
 
 // ==================== GROUPS & MEMBERS ====================
 app.get("/api/groups", auth, requireSubscription, async (req, res) => {
@@ -142,7 +102,10 @@ app.get("/api/groups", auth, requireSubscription, async (req, res) => {
       id: g.id, title: g.title, exam: g.exam, track: g.track, members: g._count.members
     }));
     res.json(out);
-  } catch (err) { console.error(err); res.status(500).json({ message: "Failed to fetch groups" }); }
+  } catch (err) { 
+    console.error(err); 
+    res.status(500).json({ message: "Failed to fetch groups" }); 
+  }
 });
 
 app.get("/api/groups/:groupId/isMember/:userId", auth, requireSubscription, async (req, res) => {
@@ -151,7 +114,10 @@ app.get("/api/groups/:groupId/isMember/:userId", auth, requireSubscription, asyn
     const userId = Number(req.params.userId);
     const m = await prisma.groupMember.findFirst({ where: { groupId, userId }});
     res.json({ isMember: !!m });
-  } catch (err) { console.error(err); res.status(500).json({ message: "Failed" }); }
+  } catch (err) { 
+    console.error(err); 
+    res.status(500).json({ message: "Failed" }); 
+  }
 });
 
 app.post("/api/groups/:groupId/join", auth, requireSubscription, async (req, res) => {
@@ -163,7 +129,10 @@ app.post("/api/groups/:groupId/join", auth, requireSubscription, async (req, res
     await prisma.groupMember.create({ data: { groupId, userId }});
     setTimeout(() => emitGroupCounts(groupId), 250);
     res.json({ message: "Joined group" });
-  } catch (err) { console.error(err); res.status(500).json({ message: "Failed to join" }); }
+  } catch (err) { 
+    console.error(err); 
+    res.status(500).json({ message: "Failed to join" }); 
+  }
 });
 
 app.post("/api/groups/:groupId/leave", auth, requireSubscription, async (req, res) => {
@@ -173,7 +142,10 @@ app.post("/api/groups/:groupId/leave", auth, requireSubscription, async (req, re
     await prisma.groupMember.deleteMany({ where: { groupId, userId }});
     setTimeout(() => emitGroupCounts(groupId), 250);
     res.json({ message: "Left group" });
-  } catch (err) { console.error(err); res.status(500).json({ message: "Failed to leave" }); }
+  } catch (err) { 
+    console.error(err); 
+    res.status(500).json({ message: "Failed to leave" }); 
+  }
 });
 
 app.get("/api/groups/:groupId/members", auth, requireSubscription, async (req, res) => {
@@ -184,7 +156,10 @@ app.get("/api/groups/:groupId/members", auth, requireSubscription, async (req, r
       include: { user: { select: { id: true, username: true, name: true } } }
     });
     res.json(members.map(m => m.user));
-  } catch (err) { console.error(err); res.status(500).json({ message: "Failed" }); }
+  } catch (err) { 
+    console.error(err); 
+    res.status(500).json({ message: "Failed" }); 
+  }
 });
 
 // ==================== GROUP MESSAGES ====================
@@ -198,7 +173,10 @@ app.get("/api/groups/:groupId/messages", auth, requireSubscription, async (req, 
       orderBy: { createdAt: "asc" }
     });
     res.json(msgs);
-  } catch (err) { console.error(err); res.status(500).json({ message: "Failed to load messages" }); }
+  } catch (err) { 
+    console.error(err); 
+    res.status(500).json({ message: "Failed to load messages" }); 
+  }
 });
 
 app.post("/api/groups/:groupId/messages", auth, upload.single("file"), requireSubscription, async (req, res) => {
@@ -227,7 +205,10 @@ app.post("/api/groups/:groupId/messages", auth, upload.single("file"), requireSu
     await emitGroupCounts(groupId);
 
     res.status(201).json(created);
-  } catch (err) { console.error(err); res.status(500).json({ message: "Failed to send message" }); }
+  } catch (err) { 
+    console.error(err); 
+    res.status(500).json({ message: "Failed to send message" }); 
+  }
 });
 
 // ==================== DIRECT MESSAGES ====================
@@ -253,7 +234,10 @@ app.get("/api/dms/:otherUserId", auth, requireSubscription, async (req, res) => 
     });
 
     res.json(msgs);
-  } catch (err) { console.error(err); res.status(500).json({ message: "Failed to load DMs" }); }
+  } catch (err) { 
+    console.error(err); 
+    res.status(500).json({ message: "Failed to load DMs" }); 
+  }
 });
 
 app.post("/api/dms", auth, upload.single("file"), requireSubscription, async (req, res) => {
@@ -276,7 +260,10 @@ app.post("/api/dms", auth, upload.single("file"), requireSubscription, async (re
     io.to(`dm:${senderId}`).emit("directMessage", created);
 
     res.status(201).json(created);
-  } catch (err) { console.error(err); res.status(500).json({ message: "Failed to send DM" }); }
+  } catch (err) { 
+    console.error(err); 
+    res.status(500).json({ message: "Failed to send DM" }); 
+  }
 });
 
 app.get("/api/dms", auth, requireSubscription, async (req, res) => {
@@ -297,12 +284,14 @@ app.get("/api/dms", auth, requireSubscription, async (req, res) => {
     sent.forEach(m => {
       const other = m.receiver;
       const prev = map.get(other.id);
-      if (!prev || new Date(m.createdAt) > new Date(prev.createdAt)) map.set(other.id, { user: other, message: m });
+      if (!prev || new Date(m.createdAt) > new Date(prev.createdAt)) 
+        map.set(other.id, { user: other, message: m });
     });
     received.forEach(m => {
       const other = m.sender;
       const prev = map.get(other.id);
-      if (!prev || new Date(m.createdAt) > new Date(prev.createdAt)) map.set(other.id, { user: other, message: m });
+      if (!prev || new Date(m.createdAt) > new Date(prev.createdAt)) 
+        map.set(other.id, { user: other, message: m });
     });
 
     const result = Array.from(map.values()).map(v => ({
@@ -313,7 +302,10 @@ app.get("/api/dms", auth, requireSubscription, async (req, res) => {
     }));
 
     res.json(result);
-  } catch (err) { console.error(err); res.status(500).json({ message: "Failed to list DMs" }); }
+  } catch (err) { 
+    console.error(err); 
+    res.status(500).json({ message: "Failed to list DMs" }); 
+  }
 });
 
 // ==================== SOCKET.IO REAL-TIME ====================
@@ -367,21 +359,17 @@ cron.schedule("0 0 * * *", async () => {
     const a = await prisma.groupMessage.deleteMany({ where: { createdAt: { lt: cutoff } } });
     const b = await prisma.directMessage.deleteMany({ where: { createdAt: { lt: cutoff } } });
     console.log("Cleanup:", a.count, b.count);
-  } catch (err) { console.error("Cleanup failed:", err); }
+  } catch (err) { 
+    console.error("Cleanup failed:", err); 
+  }
 });
 
-//--------------------------------------------------------------
-//                     ADMIN ENDPOINTS
-//--------------------------------------------------------------
-
-async function adminOnly(req, res, next) {
-  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-  if (!user?.isAdmin) return res.status(403).json({ message: "Not authorized" });
-  next();
-}
+//==============================================================================
+// ADMIN ENDPOINTS - FIXED: All routes now have adminOnly middleware
+//==============================================================================
 
 // -------- USERS --------
-app.get("/api/admin/users", auth, async (req, res) => {
+app.get("/api/admin/users", auth, adminOnly, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
       include: {
@@ -402,7 +390,7 @@ app.get("/api/admin/users", auth, async (req, res) => {
   }
 });
 
-app.delete("/api/admin/users/:id", auth, async (req, res) => {
+app.delete("/api/admin/users/:id", auth, adminOnly, async (req, res) => {
   try {
     const id = Number(req.params.id);
     await prisma.user.delete({ where: { id } });
@@ -414,7 +402,7 @@ app.delete("/api/admin/users/:id", auth, async (req, res) => {
 });
 
 // -------- GROUPS --------
-app.get("/api/admin/groups", auth, async (req, res) => {
+app.get("/api/admin/groups", auth, adminOnly, async (req, res) => {
   try {
     const groups = await prisma.group.findMany({
       include: {
@@ -428,7 +416,7 @@ app.get("/api/admin/groups", auth, async (req, res) => {
   }
 });
 
-app.post("/api/admin/groups", auth, async (req, res) => {
+app.post("/api/admin/groups", auth, adminOnly, async (req, res) => {
   try {
     const { title, exam, track } = req.body;
     const group = await prisma.group.create({
@@ -441,7 +429,7 @@ app.post("/api/admin/groups", auth, async (req, res) => {
   }
 });
 
-app.put("/api/admin/groups/:id", auth, async (req, res) => {
+app.put("/api/admin/groups/:id", auth, adminOnly, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { title, exam, track } = req.body;
@@ -456,7 +444,7 @@ app.put("/api/admin/groups/:id", auth, async (req, res) => {
   }
 });
 
-app.delete("/api/admin/groups/:id", auth, async (req, res) => {
+app.delete("/api/admin/groups/:id", auth, adminOnly, async (req, res) => {
   try {
     const id = Number(req.params.id);
     await prisma.group.delete({ where: { id } });
@@ -467,7 +455,7 @@ app.delete("/api/admin/groups/:id", auth, async (req, res) => {
   }
 });
 
-app.get("/api/admin/groups/:id/members", auth, async (req, res) => {
+app.get("/api/admin/groups/:id/members", auth, adminOnly, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const members = await prisma.groupMember.findMany({
@@ -481,7 +469,7 @@ app.get("/api/admin/groups/:id/members", auth, async (req, res) => {
   }
 });
 
-app.delete("/api/admin/groups/:groupId/removeUser/:userId", auth, async (req, res) => {
+app.delete("/api/admin/groups/:groupId/removeUser/:userId", auth, adminOnly, async (req, res) => {
   try {
     const groupId = Number(req.params.groupId);
     const userId = Number(req.params.userId);
@@ -494,7 +482,7 @@ app.delete("/api/admin/groups/:groupId/removeUser/:userId", auth, async (req, re
 });
 
 // -------- NEWS --------
-app.post("/api/admin/news", auth, upload.single("image"), async (req, res) => {
+app.post("/api/admin/news", auth, adminOnly, upload.single("image"), async (req, res) => {
   try {
     const { title, content } = req.body;
     let imageUrl = null;
@@ -516,7 +504,7 @@ app.post("/api/admin/news", auth, upload.single("image"), async (req, res) => {
   }
 });
 
-app.get("/api/admin/news", auth, async (req, res) => {
+app.get("/api/admin/news", auth, adminOnly, async (req, res) => {
   try {
     const news = await prisma.news.findMany({
       orderBy: { createdAt: "desc" }
@@ -529,7 +517,7 @@ app.get("/api/admin/news", auth, async (req, res) => {
   }
 });
 
-app.put("/api/admin/news/:id", auth, upload.single("image"), async (req, res) => {
+app.put("/api/admin/news/:id", auth, adminOnly, upload.single("image"), async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { title, content } = req.body;
@@ -554,7 +542,7 @@ app.put("/api/admin/news/:id", auth, upload.single("image"), async (req, res) =>
   }
 });
 
-app.delete("/api/admin/news/:id", auth, async (req, res) => {
+app.delete("/api/admin/news/:id", auth, adminOnly, async (req, res) => {
   try {
     const id = Number(req.params.id);
 
@@ -570,7 +558,7 @@ app.delete("/api/admin/news/:id", auth, async (req, res) => {
 });
 
 // -------- SUBSCRIPTIONS --------
-app.get("/api/admin/subscriptions/summary", auth, async (req, res) => {
+app.get("/api/admin/subscriptions/summary", auth, adminOnly, async (req, res) => {
   try {
     const now = new Date();
 
@@ -603,8 +591,7 @@ app.get("/api/admin/subscriptions/summary", auth, async (req, res) => {
   }
 });
 
-
-app.get("/api/admin/subscriptions/users", auth, async (req, res) => {
+app.get("/api/admin/subscriptions/users", auth, adminOnly, async (req, res) => {
   try {
     const subscribed = await prisma.user.findMany({
       where: { subscriptions: { some: {} } },
@@ -660,7 +647,14 @@ app.post("/api/admin/cbt/subjects", auth, adminOnly, async (req, res) => {
   try {
     const { name, slug, description, maxQuestions, defaultTime, allowCustom } = req.body;
     const subject = await prisma.subject.create({
-      data: { name, slug, description, maxQuestions: Number(maxQuestions)||100, defaultTime: Number(defaultTime)||30, allowCustom: allowCustom === undefined ? true : !!allowCustom }
+      data: { 
+        name, 
+        slug, 
+        description, 
+        maxQuestions: Number(maxQuestions)||100, 
+        defaultTime: Number(defaultTime)||30, 
+        allowCustom: allowCustom === undefined ? true : !!allowCustom 
+      }
     });
     res.status(201).json(subject);
   } catch (err) {
@@ -675,7 +669,14 @@ app.put("/api/admin/cbt/subjects/:id", auth, adminOnly, async (req, res) => {
     const { name, slug, description, maxQuestions, defaultTime, allowCustom } = req.body;
     const updated = await prisma.subject.update({
       where: { id },
-      data: { name, slug, description, maxQuestions: Number(maxQuestions)||100, defaultTime: Number(defaultTime)||30, allowCustom: !!allowCustom }
+      data: { 
+        name, 
+        slug, 
+        description, 
+        maxQuestions: Number(maxQuestions)||100, 
+        defaultTime: Number(defaultTime)||30, 
+        allowCustom: !!allowCustom 
+      }
     });
     res.json(updated);
   } catch (err) {
@@ -829,19 +830,21 @@ app.post("/api/cbt/submit", auth, requireSubscription, async (req, res) => {
     });
 
     // keep only recent 5 attempts
-await prisma.cBTResult.deleteMany({
-  where: {
-    userId,
-    id: { notIn: (
-      await prisma.cBTResult.findMany({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        select: { id: true }
-      })
-    ).map(r => r.id) }
-  }
-});
+    await prisma.cBTResult.deleteMany({
+      where: {
+        userId,
+        id: { 
+          notIn: (
+            await prisma.cBTResult.findMany({
+              where: { userId },
+              orderBy: { createdAt: "desc" },
+              take: 5,
+              select: { id: true }
+            })
+          ).map(r => r.id) 
+        }
+      }
+    });
 
     res.json({ resultId: result.id, score: correctCount, total, percentage: result.percentage });
   } catch (err) {
@@ -882,7 +885,6 @@ app.get("/api/cbt/history", auth, requireSubscription, async (req, res) => {
     res.status(500).json({ message: "Failed to fetch CBT history" });
   }
 });
-
 
 app.get("/api/cbt/results/:id", auth, requireSubscription, async (req, res) => {
   try {
@@ -1079,6 +1081,7 @@ app.post("/api/newsletter/subscribe", async (req, res) => {
   }
 });
 
+// ==================== START SERVER ====================
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>
   console.log(`🚀 BookGuru backend running on port ${PORT}`)
