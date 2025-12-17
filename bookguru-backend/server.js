@@ -99,7 +99,9 @@ app.get("/api/groups", auth, requireSubscription, async (req, res) => {
       orderBy: { createdAt: "asc" }
     });
     const out = groups.map(g => ({
-      id: g.id, title: g.title, exam: g.exam, track: g.track, members: g._count.members
+      id: g.id, 
+      title: g.title, 
+      members: g._count.members
     }));
     res.json(out);
   } catch (err) { 
@@ -418,9 +420,9 @@ app.get("/api/admin/groups", auth, adminOnly, async (req, res) => {
 
 app.post("/api/admin/groups", auth, adminOnly, async (req, res) => {
   try {
-    const { title, exam, track } = req.body;
+    const { title } = req.body;
     const group = await prisma.group.create({
-      data: { title, exam, track }
+      data: { title }
     });
     res.status(201).json(group);
   } catch (err) {
@@ -432,10 +434,10 @@ app.post("/api/admin/groups", auth, adminOnly, async (req, res) => {
 app.put("/api/admin/groups/:id", auth, adminOnly, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { title, exam, track } = req.body;
+    const { title } = req.body;
     const updated = await prisma.group.update({
       where: { id },
-      data: { title, exam, track }
+      data: { title }
     });
     res.json(updated);
   } catch (err) {
@@ -598,7 +600,7 @@ app.get("/api/admin/subscriptions/users", auth, adminOnly, async (req, res) => {
       include: {
         subscriptions: {
           orderBy: { createdAt: 'desc' },
-          take: 1 // Get the latest subscription
+          take: 1
         }
       }
     });
@@ -607,7 +609,6 @@ app.get("/api/admin/subscriptions/users", auth, adminOnly, async (req, res) => {
       where: { subscriptions: { none: {} } }
     });
 
-    // Format subscribed users to include subscription details at the top level
     const formattedSubscribed = subscribed.map(user => ({
       id: user.subscriptions[0]?.id || user.id,
       user: {
@@ -616,7 +617,7 @@ app.get("/api/admin/subscriptions/users", auth, adminOnly, async (req, res) => {
         email: user.email,
         name: user.name
       },
-      username: user.username, // For backwards compatibility
+      username: user.username,
       email: user.email,
       amount: user.subscriptions[0]?.amount || 0,
       createdAt: user.subscriptions[0]?.createdAt || user.createdAt
@@ -646,20 +647,25 @@ app.get("/api/cbt/subjects", auth, requireSubscription, async (req, res) => {
 app.post("/api/admin/cbt/subjects", auth, adminOnly, async (req, res) => {
   try {
     const { name, slug, description, maxQuestions, defaultTime, allowCustom } = req.body;
+    
+    if (!name || !slug) {
+      return res.status(400).json({ message: "Name and slug are required" });
+    }
+
     const subject = await prisma.subject.create({
       data: { 
         name, 
         slug, 
-        description, 
-        maxQuestions: Number(maxQuestions)||100, 
-        defaultTime: Number(defaultTime)||30, 
+        description: description || null,
+        maxQuestions: Number(maxQuestions) || 100, 
+        defaultTime: Number(defaultTime) || 30, 
         allowCustom: allowCustom === undefined ? true : !!allowCustom 
       }
     });
     res.status(201).json(subject);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to create subject" });
+    console.error("Error creating subject:", err);
+    res.status(500).json({ message: "Failed to create subject", error: err.message });
   }
 });
 
@@ -672,9 +678,9 @@ app.put("/api/admin/cbt/subjects/:id", auth, adminOnly, async (req, res) => {
       data: { 
         name, 
         slug, 
-        description, 
-        maxQuestions: Number(maxQuestions)||100, 
-        defaultTime: Number(defaultTime)||30, 
+        description: description || null,
+        maxQuestions: Number(maxQuestions) || 100, 
+        defaultTime: Number(defaultTime) || 30, 
         allowCustom: !!allowCustom 
       }
     });
@@ -705,7 +711,10 @@ app.post("/api/admin/cbt/questions", auth, adminOnly, upload.single("image"), as
       data: {
         subjectId: Number(subjectId),
         text,
-        optionA, optionB, optionC, optionD,
+        optionA, 
+        optionB, 
+        optionC, 
+        optionD,
         correct,
         explanation: explanation || null,
         imageUrl
@@ -747,7 +756,10 @@ app.get("/api/admin/cbt/questions", auth, adminOnly, async (req, res) => {
   try {
     const subjectId = req.query.subjectId ? Number(req.query.subjectId) : undefined;
     const where = subjectId ? { subjectId } : {};
-    const questions = await prisma.question.findMany({ where, orderBy: { createdAt: "desc" } });
+    const questions = await prisma.question.findMany({ 
+      where, 
+      orderBy: { createdAt: "desc" } 
+    });
     res.json(questions);
   } catch (err) {
     console.error(err);
