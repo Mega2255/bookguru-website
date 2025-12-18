@@ -994,7 +994,7 @@ app.get("/api/cbt/results/:id", auth, requireSubscription, async (req, res) => {
 });
 
 // ==================== BULK UPLOAD CBT QUESTIONS ====================
-app.post("/api/admin/cbt/questions/bulk-upload", auth, adminOnly, upload.single("file"), async (req, res) => {
+app.post("/api/cbt/questions/bulk-upload", auth, upload.single("file"), async (req, res) => {
   try {
     const subjectId = Number(req.body.subjectId);
 

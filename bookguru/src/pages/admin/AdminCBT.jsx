@@ -53,7 +53,7 @@ export default function AdminCBT() {
     if (!sname || !sslug) return alert("Name & slug required");
     try {
       await axios.post(
-        `${API}/api/admin/cbt/subjects`,
+        `${API}/api/cbt/subjects`,
         { name: sname, slug: sslug, maxQuestions: smax, defaultTime: stime },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -73,7 +73,7 @@ export default function AdminCBT() {
     setSelSubject(s);
     try {
       const res = await axios.get(
-        `${API}/api/admin/cbt/questions?subjectId=${s.id}`,
+        `${API}/api/cbt/questions?subjectId=${s.id}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setQuestions(res.data);
@@ -98,7 +98,7 @@ export default function AdminCBT() {
     if (image) form.append("image", image);
 
     try {
-      await axios.post(`${API}/api/admin/cbt/questions`, form, {
+      await axios.post(`${API}/api/cbt/questions`, form, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
@@ -123,7 +123,7 @@ export default function AdminCBT() {
   const removeQuestion = async (id) => {
     if (!confirm("Delete question?")) return;
     try {
-      await axios.delete(`${API}/api/admin/cbt/questions/${id}`, {
+      await axios.delete(`${API}/api/cbt/questions/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       selectSubject(selSubject);
@@ -144,7 +144,7 @@ export default function AdminCBT() {
 
     try {
      const res = await axios.post(
-  `${API}/api/admin/cbt/questions/bulk-upload`,
+  `${API}/api/cbt/questions/bulk-upload`,
   form,
   {
     headers: {
