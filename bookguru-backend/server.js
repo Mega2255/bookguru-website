@@ -632,7 +632,8 @@ app.get("/api/admin/subscriptions/users", auth, adminOnly, async (req, res) => {
 
 // ==================== CBT (Subjects, Questions, Results) ====================
 
-app.get("/api/cbt/subjects", auth, requireSubscription, async (req, res) => {
+// 🔓 Any logged-in user can view subjects
+app.get("/api/cbt/subjects", auth, async (req, res) => {
   try {
     const subjects = await prisma.subject.findMany({
       orderBy: { createdAt: "desc" }
@@ -644,54 +645,75 @@ app.get("/api/cbt/subjects", auth, requireSubscription, async (req, res) => {
   }
 });
 
-app.post("/api/admin/cbt/subjects", auth, adminOnly, async (req, res) => {
+// 🔓 Any logged-in user can create subject
+app.post("/api/cbt/subjects", auth, async (req, res) => {
   try {
     const { name, slug, description, maxQuestions, defaultTime, allowCustom } = req.body;
-    
+
     if (!name || !slug) {
       return res.status(400).json({ message: "Name and slug are required" });
     }
 
     const subject = await prisma.subject.create({
-      data: { 
-        name, 
-        slug, 
+      data: {
+        name,
+        slug,
         description: description || null,
-        maxQuestions: Number(maxQuestions) || 100, 
-        defaultTime: Number(defaultTime) || 30, 
-        allowCustom: allowCustom === undefined ? true : !!allowCustom 
+        maxQuestions: Number(maxQuestions) || 100,
+        defaultTime: Number(defaultTime) || 30,
+        allowCustom: allowCustom === undefined ? true : Boolean(allowCustom)
       }
     });
+
     res.status(201).json(subject);
   } catch (err) {
     console.error("Error creating subject:", err);
-    res.status(500).json({ message: "Failed to create subject", error: err.message });
+
+    // ✅ Handle duplicate slug properly
+    if (err.code === "P2002") {
+      return res.status(409).json({
+        message: "Subject slug already exists. Please use another slug."
+      });
+    }
+
+    res.status(500).json({ message: "Failed to create subject" });
   }
 });
 
-app.put("/api/admin/cbt/subjects/:id", auth, adminOnly, async (req, res) => {
+// 🔓 Any logged-in user can update subject
+app.put("/api/cbt/subjects/:id", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { name, slug, description, maxQuestions, defaultTime, allowCustom } = req.body;
+
     const updated = await prisma.subject.update({
       where: { id },
-      data: { 
-        name, 
-        slug, 
+      data: {
+        name,
+        slug,
         description: description || null,
-        maxQuestions: Number(maxQuestions) || 100, 
-        defaultTime: Number(defaultTime) || 30, 
-        allowCustom: !!allowCustom 
+        maxQuestions: Number(maxQuestions) || 100,
+        defaultTime: Number(defaultTime) || 30,
+        allowCustom: Boolean(allowCustom)
       }
     });
+
     res.json(updated);
   } catch (err) {
     console.error(err);
+
+    if (err.code === "P2002") {
+      return res.status(409).json({
+        message: "Subject slug already exists."
+      });
+    }
+
     res.status(500).json({ message: "Failed to update subject" });
   }
 });
 
-app.delete("/api/admin/cbt/subjects/:id", auth, adminOnly, async (req, res) => {
+// 🔓 Any logged-in user can delete subject
+app.delete("/api/cbt/subjects/:id", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     await prisma.subject.delete({ where: { id } });
@@ -702,24 +724,34 @@ app.delete("/api/admin/cbt/subjects/:id", auth, adminOnly, async (req, res) => {
   }
 });
 
-app.post("/api/admin/cbt/questions", auth, adminOnly, upload.single("image"), async (req, res) => {
+// ==================== QUESTIONS ====================
+
+// 🔓 Any logged-in user can create questions
+app.post("/api/cbt/questions", auth, upload.single("image"), async (req, res) => {
   try {
     const { subjectId, text, optionA, optionB, optionC, optionD, correct, explanation } = req.body;
+
+    if (!subjectId || !text || !correct) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
     let imageUrl = null;
     if (req.file) imageUrl = `/uploads/${req.file.filename}`;
+
     const q = await prisma.question.create({
       data: {
         subjectId: Number(subjectId),
         text,
-        optionA, 
-        optionB, 
-        optionC, 
+        optionA,
+        optionB,
+        optionC,
         optionD,
         correct,
         explanation: explanation || null,
         imageUrl
       }
     });
+
     res.status(201).json(q);
   } catch (err) {
     console.error(err);
@@ -727,13 +759,29 @@ app.post("/api/admin/cbt/questions", auth, adminOnly, upload.single("image"), as
   }
 });
 
-app.put("/api/admin/cbt/questions/:id", auth, adminOnly, upload.single("image"), async (req, res) => {
+// 🔓 Any logged-in user can update question
+app.put("/api/cbt/questions/:id", auth, upload.single("image"), async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { text, optionA, optionB, optionC, optionD, correct, explanation } = req.body;
-    const data = { text, optionA, optionB, optionC, optionD, correct, explanation: explanation || null };
+
+    const data = {
+      text,
+      optionA,
+      optionB,
+      optionC,
+      optionD,
+      correct,
+      explanation: explanation || null
+    };
+
     if (req.file) data.imageUrl = `/uploads/${req.file.filename}`;
-    const updated = await prisma.question.update({ where: { id }, data });
+
+    const updated = await prisma.question.update({
+      where: { id },
+      data
+    });
+
     res.json(updated);
   } catch (err) {
     console.error(err);
@@ -741,7 +789,8 @@ app.put("/api/admin/cbt/questions/:id", auth, adminOnly, upload.single("image"),
   }
 });
 
-app.delete("/api/admin/cbt/questions/:id", auth, adminOnly, async (req, res) => {
+// 🔓 Any logged-in user can delete question
+app.delete("/api/cbt/questions/:id", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     await prisma.question.delete({ where: { id } });
@@ -752,20 +801,24 @@ app.delete("/api/admin/cbt/questions/:id", auth, adminOnly, async (req, res) => 
   }
 });
 
-app.get("/api/admin/cbt/questions", auth, adminOnly, async (req, res) => {
+// 🔓 Any logged-in user can view questions
+app.get("/api/cbt/questions", auth, async (req, res) => {
   try {
     const subjectId = req.query.subjectId ? Number(req.query.subjectId) : undefined;
     const where = subjectId ? { subjectId } : {};
-    const questions = await prisma.question.findMany({ 
-      where, 
-      orderBy: { createdAt: "desc" } 
+
+    const questions = await prisma.question.findMany({
+      where,
+      orderBy: { createdAt: "desc" }
     });
+
     res.json(questions);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Failed to load questions" });
   }
 });
+
 
 app.get("/api/cbt/subjects/:id/questions", auth, requireSubscription, async (req, res) => {
   try {
