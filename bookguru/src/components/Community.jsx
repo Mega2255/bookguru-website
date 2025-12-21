@@ -1,5 +1,5 @@
-// Community.jsx - FIXED VERSION (Hooks always run)
-import React, { useEffect, useState, useRef } from "react";
+// Community.jsx - FULLY FIXED (All hooks before returns)
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { io } from "socket.io-client";
@@ -51,8 +51,6 @@ export default function Community() {
   const [file, setFile] = useState(null);
   const [typingUsers, setTypingUsers] = useState({});
   const [loadingMessages, setLoadingMessages] = useState(false);
-
-  // unread counts
   const [unreadCounts, setUnreadCounts] = useState({});
 
   // scroll / UI helpers
@@ -60,11 +58,36 @@ export default function Community() {
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-
-  // typing timeout ref
   const typingTimeoutRef = useRef(null);
 
-  // ---- ✅ FIXED: CHECK PROMO FIRST, THEN SUBSCRIPTION ----
+  // ---- ✅ ALL HOOKS MUST BE HERE, BEFORE ANY RETURNS ----
+
+  // Load functions (defined with useCallback to avoid dependency issues)
+  const loadGroups = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await axios.get(`${API}/api/groups`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setGroups(res.data || []);
+    } catch (err) {
+      console.error("loadGroups:", err);
+    }
+  }, [token]);
+
+  const loadDmList = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await axios.get(`${API}/api/dms`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDmList(res.data || []);
+    } catch (err) {
+      console.error("loadDmList:", err);
+    }
+  }, [token]);
+
+  // Check access (promo + subscription)
   useEffect(() => {
     const checkAccess = async () => {
       if (!token) {
@@ -73,18 +96,15 @@ export default function Community() {
       }
 
       try {
-        // ✅ STEP 1: Check if promo is active
         const promoRes = await axios.get(`${API}/api/promo/status`);
 
         if (promoRes.data.active) {
-          // 🎉 Promo is active - everyone gets access!
           console.log("✅ Free promo active:", promoRes.data.message);
           setAllowed(true);
           setLoading(false);
           return;
         }
 
-        // ✅ STEP 2: Promo ended - check subscription
         const subRes = await axios.get(`${API}/api/subscription/status`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -107,9 +127,8 @@ export default function Community() {
     checkAccess();
   }, [token, navigate]);
 
-  // --- ✅ FIXED: Socket init - hook always runs
+  // Socket initialization
   useEffect(() => {
-    // Only execute logic when conditions are met
     if (!token || !allowed) return;
     
     const s = io(API, { auth: { token } });
@@ -120,161 +139,15 @@ export default function Community() {
     };
   }, [token, allowed]);
 
-  // --- Load lists - define functions outside of conditional useEffect
-  const loadGroups = async () => {
-    if (!token) return;
-    try {
-      const res = await axios.get(`${API}/api/groups`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setGroups(res.data || []);
-    } catch (err) {
-      console.error("loadGroups:", err);
-    }
-  };
-
-  const loadDmList = async () => {
-    if (!token) return;
-    try {
-      const res = await axios.get(`${API}/api/dms`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setDmList(res.data || []);
-    } catch (err) {
-      console.error("loadDmList:", err);
-    }
-  };
-
-  // ✅ FIXED: Hook always runs, but logic is conditional
+  // Load groups and DMs when allowed
   useEffect(() => {
     if (allowed) {
       loadGroups();
       loadDmList();
     }
-  }, [allowed]);
+  }, [allowed, loadGroups, loadDmList]);
 
-  // ---- LOADING STATE ----
-  if (loading) {
-    return (
-      <div className="p-10 text-center text-green-700 font-semibold">
-        Checking access...
-      </div>
-    );
-  }
-
-  // ---- IF NOT ALLOWED, REDIRECTING ----
-  if (!allowed) return null;
-
-  // --- Check membership
-  const checkIsMember = async (groupId) => {
-    try {
-      const res = await axios.get(`${API}/api/groups/${groupId}/isMember/${user.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return res.data.isMember;
-    } catch (err) {
-      return false;
-    }
-  };
-
-  // --- Join / Leave group
-  const joinGroup = async (groupId) => {
-    try {
-      await axios.post(`${API}/api/groups/${groupId}/join`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      await loadGroups();
-    } catch (err) {
-      alert(err.response?.data?.message || "Failed to join");
-    }
-  };
-
-  const leaveGroup = async (groupId) => {
-    try {
-      await axios.post(`${API}/api/groups/${groupId}/leave`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (selected?.type === "group" && selected.id === groupId) {
-        setSelected(null);
-        setMessages([]);
-      }
-      await loadGroups();
-    } catch (err) {
-      alert("Failed to leave");
-    }
-  };
-
-  // --- Fetch messages
-  const fetchMessages = async (id, type) => {
-    setLoadingMessages(true);
-    try {
-      const url = type === "group" ? `${API}/api/groups/${id}/messages` : `${API}/api/dms/${id}`;
-      const res = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setMessages(res.data || []);
-      const key = `${type}:${id}`;
-      setUnreadCounts(prev => ({ ...prev, [key]: 0 }));
-      setTimeout(() => {
-        messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" });
-      }, 60);
-    } catch (err) {
-      console.error("fetchMessages:", err);
-    }
-    setLoadingMessages(false);
-  };
-
-  // --- Open group / DM
-  const openGroup = async (g) => {
-    setSelected({ ...g, type: "group" });
-    setMessages([]);
-    await fetchMessages(g.id, "group");
-    socket?.emit("joinGroupRoom", { groupId: g.id });
-  };
-
-  const openDM = async (other) => {
-    setSelected({ id: other.id, username: other.username, type: "dm" });
-    setMessages([]);
-    await fetchMessages(other.id, "dm");
-  };
-
-  // Handle clicking on username
-  const handleUsernameClick = async (clickedUserId, clickedUsername) => {
-    if (clickedUserId === user.id) return;
-    setActiveTab("dms");
-    await openDM({ id: clickedUserId, username: clickedUsername });
-    await loadDmList();
-  };
-
-  // --- Send message
-  const sendMessage = async () => {
-    if (!selected) return;
-    if (!messageText.trim() && !file) return;
-
-    const form = new FormData();
-    if (messageText) form.append("content", messageText);
-    if (file) form.append("file", file);
-
-    try {
-      if (selected.type === "group") {
-        await axios.post(`${API}/api/groups/${selected.id}/messages`, form, {
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
-        });
-      } else {
-        form.append("receiverId", selected.id);
-        await axios.post(`${API}/api/dms`, form, {
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
-        });
-      }
-      setMessageText("");
-      setFile(null);
-    } catch (err) {
-      console.error("sendMessage:", err);
-      alert("Send failed");
-    }
-  };
-
-  // --- Socket listeners
+  // Socket listeners
   useEffect(() => {
     if (!socket) return;
 
@@ -326,14 +199,17 @@ export default function Community() {
       socket.off("typing");
       socket.off("stopTyping");
     };
-  }, [socket, selected]);
+  }, [socket, selected, user.id, loadGroups, loadDmList]);
 
-  // Emit typing
+  // Emit typing status
   useEffect(() => {
     if (!socket || !selected) return;
+    
     if (messageText.length > 0) {
       socket.emit("typing", { groupId: selected.type === "group" ? selected.id : null });
+      
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      
       typingTimeoutRef.current = setTimeout(() => {
         socket.emit("stopTyping", { groupId: selected.type === "group" ? selected.id : null });
       }, 1200);
@@ -342,24 +218,142 @@ export default function Community() {
     }
   }, [messageText, socket, selected]);
 
-  // Scroll handlers
+  // Scroll handler
   useEffect(() => {
     const el = messagesRef.current;
     if (!el) return;
+    
     const onScroll = () => {
       const atBottom = el.scrollHeight - el.clientHeight - el.scrollTop < 120;
       setShowScrollBtn(!atBottom);
     };
+    
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
   }, [messages]);
+
+  // ---- ✅ NOW SAFE TO DO CONDITIONAL RETURNS ----
+  
+  if (loading) {
+    return (
+      <div className="p-10 text-center text-green-700 font-semibold">
+        Checking access...
+      </div>
+    );
+  }
+
+  if (!allowed) return null;
+
+  // ---- HELPER FUNCTIONS (after hooks and conditional returns) ----
+  
+  const checkIsMember = async (groupId) => {
+    try {
+      const res = await axios.get(`${API}/api/groups/${groupId}/isMember/${user.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.data.isMember;
+    } catch (err) {
+      return false;
+    }
+  };
+
+  const joinGroup = async (groupId) => {
+    try {
+      await axios.post(`${API}/api/groups/${groupId}/join`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await loadGroups();
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to join");
+    }
+  };
+
+  const leaveGroup = async (groupId) => {
+    try {
+      await axios.post(`${API}/api/groups/${groupId}/leave`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (selected?.type === "group" && selected.id === groupId) {
+        setSelected(null);
+        setMessages([]);
+      }
+      await loadGroups();
+    } catch (err) {
+      alert("Failed to leave");
+    }
+  };
+
+  const fetchMessages = async (id, type) => {
+    setLoadingMessages(true);
+    try {
+      const url = type === "group" ? `${API}/api/groups/${id}/messages` : `${API}/api/dms/${id}`;
+      const res = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMessages(res.data || []);
+      const key = `${type}:${id}`;
+      setUnreadCounts(prev => ({ ...prev, [key]: 0 }));
+      setTimeout(() => {
+        messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" });
+      }, 60);
+    } catch (err) {
+      console.error("fetchMessages:", err);
+    }
+    setLoadingMessages(false);
+  };
+
+  const openGroup = async (g) => {
+    setSelected({ ...g, type: "group" });
+    setMessages([]);
+    await fetchMessages(g.id, "group");
+    socket?.emit("joinGroupRoom", { groupId: g.id });
+  };
+
+  const openDM = async (other) => {
+    setSelected({ id: other.id, username: other.username, type: "dm" });
+    setMessages([]);
+    await fetchMessages(other.id, "dm");
+  };
+
+  const handleUsernameClick = async (clickedUserId, clickedUsername) => {
+    if (clickedUserId === user.id) return;
+    setActiveTab("dms");
+    await openDM({ id: clickedUserId, username: clickedUsername });
+    await loadDmList();
+  };
+
+  const sendMessage = async () => {
+    if (!selected) return;
+    if (!messageText.trim() && !file) return;
+
+    const form = new FormData();
+    if (messageText) form.append("content", messageText);
+    if (file) form.append("file", file);
+
+    try {
+      if (selected.type === "group") {
+        await axios.post(`${API}/api/groups/${selected.id}/messages`, form, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
+        });
+      } else {
+        form.append("receiverId", selected.id);
+        await axios.post(`${API}/api/dms`, form, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
+        });
+      }
+      setMessageText("");
+      setFile(null);
+    } catch (err) {
+      console.error("sendMessage:", err);
+      alert("Send failed");
+    }
+  };
 
   const scrollToBottom = () => {
     messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" });
     setShowScrollBtn(false);
   };
 
-  // Touch handlers
   const onTouchStart = (e) => {
     if (!e.touches || e.touches.length === 0) return;
     touchStartX.current = e.touches[0].clientX;
@@ -380,7 +374,6 @@ export default function Community() {
     touchStartY.current = null;
   };
 
-  // Unread badge
   const renderUnread = (type, id) => {
     const key = `${type}:${id}`;
     const count = unreadCounts[key] || 0;
@@ -425,7 +418,6 @@ export default function Community() {
           </div>
 
           <div className="p-3 overflow-y-auto h-[calc(86vh-66px)] lg:h-[calc(80vh-66px)]">
-            {/* GROUPS */}
             {activeTab === "groups" && (
               <div className="space-y-2">
                 {groups.map((g) => (
@@ -469,7 +461,6 @@ export default function Community() {
               </div>
             )}
 
-            {/* DMS */}
             {activeTab === "dms" && (
               <div className="space-y-2">
                 {dmList.length === 0 && <div className="text-gray-500">No DMs yet.</div>}
@@ -507,7 +498,6 @@ export default function Community() {
               onTouchStart={onTouchStart}
               onTouchEnd={onTouchEnd}
             >
-              {/* header */}
               <div className="p-3 border-b bg-green-700 text-white flex items-center gap-3">
                 <button className="lg:hidden p-2 rounded-full bg-white/10" onClick={() => setSelected(null)}>
                   <ChevronLeft />
@@ -536,7 +526,6 @@ export default function Community() {
                 )}
               </div>
 
-              {/* messages */}
               <div ref={messagesRef} className="flex-grow p-3 overflow-y-auto bg-gray-50">
                 {loadingMessages && <div className="text-center text-gray-500">Loading...</div>}
 
@@ -572,7 +561,6 @@ export default function Community() {
                 </button>
               )}
 
-              {/* input */}
               <div className="p-3 border-t bg-white flex items-center gap-3">
                 <label className="cursor-pointer p-2">
                   <Paperclip size={22} />
