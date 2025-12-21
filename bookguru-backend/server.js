@@ -1152,7 +1152,7 @@ app.post("/api/newsletter/subscribe", async (req, res) => {
 
 app.get("/api/promo/status", async (req, res) => {
   try {
-    const PROMO_END_DATE = new Date("2025-01-08T23:59:59Z");
+    const PROMO_END_DATE = new Date("2026-01-08T23:59:59Z");
     const now = new Date();
     
     const isActive = now < PROMO_END_DATE;
