@@ -1,4 +1,4 @@
-// Pastquestion.jsx
+// Pastquestion.jsx - FIXED VERSION
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Filter, Search, BookOpen, Download, ExternalLink, X } from 'lucide-react';
@@ -74,21 +74,20 @@ const PAST_QUESTION_DATA = [
 ];
 
 /* ------------------------------------------------------
-   MAIN COMPONENT — FIXED + STABLE HOOK ORDER
+   MAIN COMPONENT – FIXED VERSION
 -------------------------------------------------------*/
 export default function Pastquestion() {
     const navigate = useNavigate();
 
-    // ---- REQUIRED HOOKS FOR ACCESS CONTROL ----
+    // ---- HOOKS FOR ACCESS CONTROL ----
     const [loading, setLoading] = useState(true);
     const [allowed, setAllowed] = useState(false);
 
-    // ---- YOUR ORIGINAL UI HOOKS ----
+    // ---- UI HOOKS ----
     const [selectedExam, setSelectedExam] = useState(EXAMS[0].id);
     const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[0].id);
     const [searchQuery, setSearchQuery] = useState('');
     const [isFilterOpen, setIsFilterOpen] = useState(true);
-
 
     // ---- FILTER LOGIC ----
     const filteredQuestions = useMemo(() => {
@@ -100,41 +99,58 @@ export default function Pastquestion() {
         );
     }, [selectedExam, selectedSubject, searchQuery]);
 
-    // ---- SUBSCRIPTION CHECK (NO EARLY RETURN) ----
+    // ---- 🔥 FIXED: CHECK PROMO FIRST, THEN SUBSCRIPTION ----
     useEffect(() => {
-        const check = async () => {
+        const checkAccess = async () => {
             try {
                 const token = localStorage.getItem("token");
-                if (!token) return navigate("/login");
+                if (!token) {
+                    navigate("/login");
+                    return;
+                }
 
                 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-const res = await axios.get(
-    `${BACKEND_URL}/api/subscription/status`,
-    { headers: { Authorization: `Bearer ${token}` } }
-);
+                // ✅ STEP 1: Check if promo is active
+                const promoRes = await axios.get(`${BACKEND_URL}/api/promo/status`);
 
+                if (promoRes.data.active) {
+                    // 🎉 Promo is active - everyone gets access!
+                    console.log("✅ Free promo active:", promoRes.data.message);
+                    setAllowed(true);
+                    setLoading(false);
+                    return;
+                }
+
+                // ✅ STEP 2: Promo ended - check subscription
+                const res = await axios.get(
+                    `${BACKEND_URL}/api/subscription/status`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
 
                 if (res.data.active) {
                     setAllowed(true);
                 } else {
+                    alert("Free access period has ended. Please subscribe to access past questions.");
                     navigate("/subscribe");
                 }
             } catch (err) {
+                console.error("Access check error:", err);
+                alert("Error checking access. Please subscribe to continue.");
                 navigate("/subscribe");
             }
 
             setLoading(false);
         };
 
-        check();
-    }, []);
+        checkAccess();
+    }, [navigate]);
 
     // ---- LOADING STATE ----
     if (loading) {
         return (
             <div className="p-10 text-center text-green-700 font-semibold">
-                Checking subscription...
+                Checking access...
             </div>
         );
     }
@@ -169,7 +185,7 @@ const res = await axios.get(
     );
 
     /* ------------------------------------------------------
-       FULL PAGE UI (UNCHANGED)
+       FULL PAGE UI
     -------------------------------------------------------*/
     return (
         <section className="min-h-screen py-10 bg-gray-50">
@@ -286,7 +302,7 @@ const res = await axios.get(
 
                                                 <p className="text-xs text-red-500 mt-1">
                                                     {q.pdfLink.startsWith('REPLACE')
-                                                        ? '⚠️ Placeholder link — update required'
+                                                        ? '⚠️ Placeholder link – update required'
                                                         : 'Click to open PDF'}
                                                 </p>
                                             </div>

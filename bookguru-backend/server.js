@@ -1146,6 +1146,32 @@ app.post("/api/newsletter/subscribe", async (req, res) => {
   }
 });
 
+
+// ==================== PROMO STATUS ====================
+// Add this section right before "// ==================== START SERVER ====================" in server.js
+
+app.get("/api/promo/status", async (req, res) => {
+  try {
+    const PROMO_END_DATE = new Date("2025-01-08T23:59:59Z");
+    const now = new Date();
+    
+    const isActive = now < PROMO_END_DATE;
+    const daysRemaining = Math.ceil((PROMO_END_DATE - now) / (1000 * 60 * 60 * 24));
+    
+    res.json({
+      active: isActive,
+      endDate: PROMO_END_DATE,
+      daysRemaining: isActive ? daysRemaining : 0,
+      message: isActive 
+        ? `🎉 Free access to all premium features! Ends in ${daysRemaining} days (January 8th, 2025)` 
+        : "Promo period has ended. Subscribe to continue accessing premium features."
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to check promo status" });
+  }
+});
+
 // ==================== START SERVER ====================
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>

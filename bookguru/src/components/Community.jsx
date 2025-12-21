@@ -1,5 +1,4 @@
-// Community.jsx (Upgraded • Mobile-first • WhatsApp-style)
-// Now with clickable usernames to open DMs
+// Community.jsx - FIXED VERSION (with promo check)
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -36,16 +35,16 @@ export default function Community() {
   const token = localStorage.getItem("token");
   const user = JSON.parse(localStorage.getItem("user") || "null");
 
-  useEffect(() => {
-    if (!token) navigate("/login");
-  }, [token]);
+  // ---- 🔥 FIXED: Add access control ----
+  const [loading, setLoading] = useState(true);
+  const [allowed, setAllowed] = useState(false);
 
   // sockets / lists / UI
   const [socket, setSocket] = useState(null);
   const [groups, setGroups] = useState([]);
   const [dmList, setDmList] = useState([]);
   const [activeTab, setActiveTab] = useState("groups");
-  const [selected, setSelected] = useState(null); // {type, id, ...}
+  const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([]);
   const [onlineCount, setOnlineCount] = useState(0);
   const [messageText, setMessageText] = useState("");
@@ -53,7 +52,7 @@ export default function Community() {
   const [typingUsers, setTypingUsers] = useState({});
   const [loadingMessages, setLoadingMessages] = useState(false);
 
-  // unread counts (key: "group:ID" or "dm:ID")
+  // unread counts
   const [unreadCounts, setUnreadCounts] = useState({});
 
   // scroll / UI helpers
@@ -62,16 +61,59 @@ export default function Community() {
   const touchStartY = useRef(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
-  // typing timeout ref for local emit
+  // typing timeout ref
   const typingTimeoutRef = useRef(null);
+
+  // ---- 🔥 FIXED: CHECK PROMO FIRST, THEN SUBSCRIPTION ----
+  useEffect(() => {
+    const checkAccess = async () => {
+      if (!token) {
+        navigate("/login");
+        return;
+      }
+
+      try {
+        // ✅ STEP 1: Check if promo is active
+        const promoRes = await axios.get(`${API}/api/promo/status`);
+
+        if (promoRes.data.active) {
+          // 🎉 Promo is active - everyone gets access!
+          console.log("✅ Free promo active:", promoRes.data.message);
+          setAllowed(true);
+          setLoading(false);
+          return;
+        }
+
+        // ✅ STEP 2: Promo ended - check subscription
+        const subRes = await axios.get(`${API}/api/subscription/status`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (subRes.data.active) {
+          setAllowed(true);
+        } else {
+          alert("Free access period has ended. Please subscribe to access Community.");
+          navigate("/subscribe");
+        }
+      } catch (err) {
+        console.error("Access check error:", err);
+        alert("Error checking access. Please subscribe to continue.");
+        navigate("/subscribe");
+      }
+
+      setLoading(false);
+    };
+
+    checkAccess();
+  }, [token, navigate]);
 
   // --- Socket init
   useEffect(() => {
-    if (!token) return;
+    if (!token || !allowed) return;
     const s = io(API, { auth: { token } });
     setSocket(s);
     return () => s.disconnect();
-  }, [token]);
+  }, [token, allowed]);
 
   // --- Load lists
   const loadGroups = async () => {
@@ -97,11 +139,25 @@ export default function Community() {
   };
 
   useEffect(() => {
-    loadGroups();
-    loadDmList();
-  }, []);
+    if (allowed) {
+      loadGroups();
+      loadDmList();
+    }
+  }, [allowed]);
 
-  // --- Check membership (used by Join/Leave)
+  // ---- LOADING STATE ----
+  if (loading) {
+    return (
+      <div className="p-10 text-center text-green-700 font-semibold">
+        Checking access...
+      </div>
+    );
+  }
+
+  // ---- IF NOT ALLOWED, REDIRECTING ----
+  if (!allowed) return null;
+
+  // --- Check membership
   const checkIsMember = async (groupId) => {
     try {
       const res = await axios.get(`${API}/api/groups/${groupId}/isMember/${user.id}`, {
@@ -113,7 +169,7 @@ export default function Community() {
     }
   };
 
-  // --- Join / Leave group (restored & accessible)
+  // --- Join / Leave group
   const joinGroup = async (groupId) => {
     try {
       await axios.post(`${API}/api/groups/${groupId}/join`, {}, {
@@ -149,7 +205,6 @@ export default function Community() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setMessages(res.data || []);
-      // reset unread for this channel
       const key = `${type}:${id}`;
       setUnreadCounts(prev => ({ ...prev, [key]: 0 }));
       setTimeout(() => {
@@ -175,24 +230,15 @@ export default function Community() {
     await fetchMessages(other.id, "dm");
   };
 
-  // NEW: Handle clicking on a username in chat
+  // Handle clicking on username
   const handleUsernameClick = async (clickedUserId, clickedUsername) => {
-    // Don't open DM with yourself
-    if (clickedUserId === user.id) {
-      return;
-    }
-
-    // Switch to DMs tab
+    if (clickedUserId === user.id) return;
     setActiveTab("dms");
-
-    // Open the DM
     await openDM({ id: clickedUserId, username: clickedUsername });
-
-    // Refresh DM list to ensure it's up to date
     await loadDmList();
   };
 
-  // --- Send message (group or dm)
+  // --- Send message
   const sendMessage = async () => {
     if (!selected) return;
     if (!messageText.trim() && !file) return;
@@ -214,33 +260,27 @@ export default function Community() {
       }
       setMessageText("");
       setFile(null);
-      // scroll will happen when socket emits message back
     } catch (err) {
       console.error("sendMessage:", err);
       alert("Send failed");
     }
   };
 
-  // --- Socket listeners & unread logic
+  // --- Socket listeners
   useEffect(() => {
     if (!socket) return;
 
-    // group messages
     socket.on("groupMessage", (msg) => {
-      // append if open for same group
       if (selected?.type === "group" && selected.id === msg.groupId) {
         setMessages(prev => [...prev, msg]);
         setTimeout(() => messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" }), 50);
       } else {
-        // increment unread for that group
         const k = `group:${msg.groupId}`;
         setUnreadCounts(prev => ({ ...prev, [k]: (prev[k] || 0) + 1 }));
       }
-      // refresh groups (counts etc)
       loadGroups();
     });
 
-    // direct messages
     socket.on("directMessage", (msg) => {
       const otherId = msg.senderId === user.id ? msg.receiverId : msg.senderId;
       if (selected?.type === "dm" && selected.id === otherId) {
@@ -253,23 +293,18 @@ export default function Community() {
       loadDmList();
     });
 
-    // online count updates
     socket.on("onlineCount", ({ groupId, count }) => {
       if (selected?.type === "group" && selected.id === groupId) {
         setOnlineCount(count);
       }
-      // optionally update groups list UI (we refresh groups periodically)
     });
 
-    // typing events
     socket.on("typing", ({ userId, groupId }) => {
-      // show typing indicator if group open
       if (selected?.type === "group" && selected.id === groupId) {
         setTypingUsers(prev => ({ ...prev, [userId]: true }));
-      } else if (selected?.type === "dm") {
-        // for DMs we could show per-user typing if implemented server-side
       }
     });
+
     socket.on("stopTyping", ({ userId, groupId }) => {
       if (selected?.type === "group" && selected.id === groupId) {
         setTypingUsers(prev => { const copy = { ...prev }; delete copy[userId]; return copy; });
@@ -285,7 +320,7 @@ export default function Community() {
     };
   }, [socket, selected]);
 
-  // --- Emit typing local
+  // Emit typing
   useEffect(() => {
     if (!socket || !selected) return;
     if (messageText.length > 0) {
@@ -299,7 +334,7 @@ export default function Community() {
     }
   }, [messageText, socket, selected]);
 
-  // --- Scroll handlers to show floating button
+  // Scroll handlers
   useEffect(() => {
     const el = messagesRef.current;
     if (!el) return;
@@ -316,28 +351,28 @@ export default function Community() {
     setShowScrollBtn(false);
   };
 
-  // --- Touch handlers for swipe-left to close chat (mobile)
+  // Touch handlers
   const onTouchStart = (e) => {
     if (!e.touches || e.touches.length === 0) return;
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
   };
+
   const onTouchEnd = (e) => {
     if (touchStartX.current === null) return;
     const endX = (e.changedTouches && e.changedTouches[0].clientX) || null;
     const endY = (e.changedTouches && e.changedTouches[0].clientY) || null;
     const dx = endX - touchStartX.current;
     const dy = Math.abs(endY - touchStartY.current);
-    const threshold = 70; // px
+    const threshold = 70;
     if (dx < -threshold && dy < 80) {
-      // left swipe detected
       setSelected(null);
     }
     touchStartX.current = null;
     touchStartY.current = null;
   };
 
-  // helper to render unread badge
+  // Unread badge
   const renderUnread = (type, id) => {
     const key = `${type}:${id}`;
     const count = unreadCounts[key] || 0;
@@ -349,7 +384,6 @@ export default function Community() {
     );
   };
 
-  // small utility to show online dot
   const OnlineDot = ({ count }) => (
     <span className={`inline-block h-2.5 w-2.5 rounded-full ${count > 0 ? "bg-green-500" : "bg-gray-300"} mr-2`} />
   );
@@ -360,11 +394,7 @@ export default function Community() {
       <div className="max-w-5xl mx-auto h-[86vh] lg:h-[80vh] flex shadow-xl rounded-xl overflow-hidden bg-white">
 
         {/* SIDEBAR */}
-        <div
-          className={`w-full lg:w-80 border-r bg-white flex-shrink-0 transition-all ${
-            selected ? "hidden lg:block" : "block"
-          }`}
-        >
+        <div className={`w-full lg:w-80 border-r bg-white flex-shrink-0 transition-all ${selected ? "hidden lg:block" : "block"}`}>
           <div className="p-3 border-b flex items-center justify-between">
             <div className="flex items-center gap-3">
               <MessageSquare className="text-green-700" />
@@ -391,10 +421,7 @@ export default function Community() {
             {activeTab === "groups" && (
               <div className="space-y-2">
                 {groups.map((g) => (
-                  <div
-                    key={g.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer"
-                  >
+                  <div key={g.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer">
                     <div className="flex items-center gap-3 flex-1" onClick={() => openGroup(g)}>
                       <div className="flex items-center gap-3">
                         <div
@@ -415,9 +442,7 @@ export default function Community() {
                     </div>
 
                     <div className="flex flex-col items-end ml-3 space-y-2">
-                      {/* unread badge */}
                       {renderUnread("group", g.id)}
-                      {/* join / leave button */}
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
@@ -462,7 +487,7 @@ export default function Community() {
           </div>
         </div>
 
-        {/* CHAT PANEL (mobile: slides in full) */}
+        {/* CHAT PANEL */}
         <AnimatePresence>
           {selected ? (
             <motion.div
@@ -496,7 +521,6 @@ export default function Community() {
                   </div>
                 </div>
 
-                {/* desktop join/leave placed in header for group */}
                 {selected.type === "group" && (
                   <div className="hidden lg:flex items-center gap-2">
                     <button onClick={() => leaveGroup(selected.id)} className="px-3 py-1 rounded-full bg-red-600 text-white">Leave</button>
@@ -511,7 +535,6 @@ export default function Community() {
                 {messages.map((m) => (
                   <div key={m.id} className={`mb-3 flex ${m.userId === user.id ? "justify-end" : "justify-start"}`}>
                     <div className={`rounded-xl p-3 max-w-[78%] ${m.userId === user.id ? "bg-orange-600 text-white" : "bg-white text-gray-800"}`}>
-                      {/* UPDATED: Made username clickable */}
                       <div 
                         className="text-xs font-bold mb-1 cursor-pointer hover:underline" 
                         style={{ color: m.userId === user.id ? "rgba(255,255,255,0.9)" : getColorFromString(m.user?.username) }}
@@ -521,14 +544,13 @@ export default function Community() {
                       </div>
                       {m.content && <div>{m.content}</div>}
                       {m.fileUrl && (
-                        <a className="text-sm underline block mt-2" href={`${API}${m.fileUrl}`} target="_blank" rel="noreferrer">📎 View file</a>
+                        <a className="text-sm underline block mt-2" href={`${API}${m.fileUrl}`} target="_blank" rel="noreferrer">🔎 View file</a>
                       )}
                       <div className="text-xs opacity-60 mt-1">{new Date(m.createdAt).toLocaleString()}</div>
                     </div>
                   </div>
                 ))}
 
-                {/* typing indicator */}
                 {Object.keys(typingUsers).length > 0 && (
                   <div className="mb-3">
                     <TypingIndicator />
@@ -536,7 +558,6 @@ export default function Community() {
                 )}
               </div>
 
-              {/* floating scroll-to-bottom */}
               {showScrollBtn && (
                 <button onClick={scrollToBottom} className="fixed right-4 bottom-24 z-40 p-3 rounded-full bg-green-700 text-white shadow-lg lg:bottom-10">
                   ↓
@@ -563,7 +584,6 @@ export default function Community() {
               </div>
             </motion.div>
           ) : (
-            // placeholder when no conversation selected
             <div className="flex-1 flex items-center justify-center bg-white p-6">
               <div className="text-center text-gray-500">
                 <MessageSquare className="mx-auto mb-3 text-green-700" />
@@ -578,7 +598,6 @@ export default function Community() {
   );
 }
 
-// Typing indicator animation component
 function TypingIndicator() {
   return (
     <div className="inline-flex items-center gap-2 p-2 bg-white rounded-full shadow-sm">

@@ -1,11 +1,10 @@
-// src/components/CBTPage.jsx
+// src/components/CBTPage.jsx - FIXED VERSION
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
 const API = import.meta.env.VITE_BACKEND_URL;
-
 
 export default function CBTPage() {
   const token = localStorage.getItem("token");
@@ -33,10 +32,10 @@ export default function CBTPage() {
   const [result, setResult] = useState(null);
 
   // ==============================
-  // 🔒 CHECK SUBSCRIPTION BEFORE LOADING CBT
+  // 🔥 FIXED: CHECK PROMO FIRST, THEN SUBSCRIPTION
   // ==============================
   useEffect(() => {
-    const verifySubscription = async () => {
+    const verifyAccess = async () => {
       if (!token) {
         alert("You must log in first.");
         navigate("/login");
@@ -44,33 +43,50 @@ export default function CBTPage() {
       }
 
       try {
-        const res = await axios.get(`${API}/api/subscription/status`, {
+        // ✅ STEP 1: Check if promo is active
+        const promoRes = await axios.get(`${API}/api/promo/status`);
+
+        if (promoRes.data.active) {
+          // 🎉 Promo is active - everyone gets access!
+          console.log("✅ Free promo active:", promoRes.data.message);
+          
+          // Load subjects
+          const subjectsRes = await axios.get(`${API}/api/cbt/subjects`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          setSubjects(subjectsRes.data);
+          return;
+        }
+
+        // ✅ STEP 2: Promo ended - check subscription
+        const subRes = await axios.get(`${API}/api/subscription/status`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (!res.data.active) {
-          alert("You must subscribe to access CBT.");
+        if (!subRes.data.active) {
+          alert("Free access period has ended. Please subscribe to access CBT.");
           navigate("/subscribe");
           return;
         }
 
-        // Subscription active → Load subjects
-        axios
-          .get(`${API}/api/cbt/subjects`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-          .then((r) => setSubjects(r.data))
-          .catch((e) => console.error(e));
+        // Load subjects
+        const subjectsRes = await axios.get(`${API}/api/cbt/subjects`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setSubjects(subjectsRes.data);
+
       } catch (err) {
-        console.error(err);
-        alert("Error checking subscription status.");
+        console.error("Access check error:", err);
+        alert("Error checking access. Please try again.");
         navigate("/subscribe");
       }
     };
 
-    verifySubscription();
+    verifyAccess();
   }, [token, navigate]);
 
+  // ... REST OF YOUR CODE STAYS EXACTLY THE SAME ...
+  
   // open settings (before starting)
   const openSettings = (subject) => {
     setSelectedSubject(subject);
@@ -144,7 +160,7 @@ export default function CBTPage() {
 
   const handleAutoSubmit = async () => {
     if (submitting) return;
-    alert("Time is up — auto-submitting your answers.");
+    alert("Time is up – auto-submitting your answers.");
     await submitAnswers();
   };
 
