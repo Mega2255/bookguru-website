@@ -1,4 +1,4 @@
-// Community.jsx - FIXED VERSION (with promo check)
+// Community.jsx - FIXED VERSION (Hooks always run)
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -35,7 +35,7 @@ export default function Community() {
   const token = localStorage.getItem("token");
   const user = JSON.parse(localStorage.getItem("user") || "null");
 
-  // ---- 🔥 FIXED: Add access control ----
+  // ---- Access control ----
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState(false);
 
@@ -64,7 +64,7 @@ export default function Community() {
   // typing timeout ref
   const typingTimeoutRef = useRef(null);
 
-  // ---- 🔥 FIXED: CHECK PROMO FIRST, THEN SUBSCRIPTION ----
+  // ---- ✅ FIXED: CHECK PROMO FIRST, THEN SUBSCRIPTION ----
   useEffect(() => {
     const checkAccess = async () => {
       if (!token) {
@@ -107,16 +107,22 @@ export default function Community() {
     checkAccess();
   }, [token, navigate]);
 
-  // --- Socket init
+  // --- ✅ FIXED: Socket init - hook always runs
   useEffect(() => {
+    // Only execute logic when conditions are met
     if (!token || !allowed) return;
+    
     const s = io(API, { auth: { token } });
     setSocket(s);
-    return () => s.disconnect();
+    
+    return () => {
+      s.disconnect();
+    };
   }, [token, allowed]);
 
-  // --- Load lists
+  // --- Load lists - define functions outside of conditional useEffect
   const loadGroups = async () => {
+    if (!token) return;
     try {
       const res = await axios.get(`${API}/api/groups`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -128,6 +134,7 @@ export default function Community() {
   };
 
   const loadDmList = async () => {
+    if (!token) return;
     try {
       const res = await axios.get(`${API}/api/dms`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -138,6 +145,7 @@ export default function Community() {
     }
   };
 
+  // ✅ FIXED: Hook always runs, but logic is conditional
   useEffect(() => {
     if (allowed) {
       loadGroups();
@@ -344,7 +352,7 @@ export default function Community() {
     };
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
-  }, [messagesRef, messages]);
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" });
@@ -544,7 +552,7 @@ export default function Community() {
                       </div>
                       {m.content && <div>{m.content}</div>}
                       {m.fileUrl && (
-                        <a className="text-sm underline block mt-2" href={`${API}${m.fileUrl}`} target="_blank" rel="noreferrer">🔎 View file</a>
+                        <a className="text-sm underline block mt-2" href={`${API}${m.fileUrl}`} target="_blank" rel="noreferrer">📎 View file</a>
                       )}
                       <div className="text-xs opacity-60 mt-1">{new Date(m.createdAt).toLocaleString()}</div>
                     </div>

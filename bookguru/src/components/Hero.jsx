@@ -12,6 +12,7 @@ export default function Hero(){
           <p className="mt-5 text-xl text-gray-700">
             Learn smart. Pass easy. Real exam simulations, past questions, and an active student community.
           </p>
+          <p>Access all bookguru features free from now till January 8th 2026.</p>
           <div className="mt-8 flex gap-4">
             {/* Primary CTA - High-contrast orange */}
             <a href="#" className="inline-block px-8 py-3 bg-orange-600 text-white text-lg font-semibold rounded-xl shadow-xl hover:shadow-2xl hover:scale-[1.02] transition duration-300">
