@@ -6,7 +6,7 @@ export const requireSubscription = async (req, res, next) => {
     const userId = req.user.id; // user injected by auth.js
 
     // 🎉 PROMO PERIOD: Free access until January 8th, 2025
-    const PROMO_END_DATE = new Date("2025-01-08T23:59:59Z"); // End of day Jan 8th, 2025
+    const PROMO_END_DATE = new Date("2026-01-08T23:59:59Z"); // End of day Jan 8th, 2026
     const now = new Date();
 
     // If we're still in promo period, grant access to everyone

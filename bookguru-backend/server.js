@@ -1163,7 +1163,7 @@ app.get("/api/promo/status", async (req, res) => {
       endDate: PROMO_END_DATE,
       daysRemaining: isActive ? daysRemaining : 0,
       message: isActive 
-        ? `🎉 Free access to all premium features! Ends in ${daysRemaining} days (January 8th, 2025)` 
+        ? `🎉 Free access to all premium features! Ends in ${daysRemaining} days (January 8th, 2026)` 
         : "Promo period has ended. Subscribe to continue accessing premium features."
     });
   } catch (error) {
